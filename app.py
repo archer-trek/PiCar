@@ -3,37 +3,38 @@
 __author__ = 'wzy'
 __date__ = '2016-11-12 16:33'
 
-from flask import Flask, render_template
-from flask_socketio import SocketIO, Namespace
-from car import MockFourWDCar
-import logging
+import eventlet
+eventlet.monkey_patch()
 
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s][%(asctime)s][%(module)s] %(message)s')
+from flask import Flask, render_template
+from flask_socketio import SocketIO, emit
+from car import MockFourWDCar
+
+# import logging
+# logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
 car = MockFourWDCar()
 
-avalibe_actions = {
-    'stop',
-    'forward', 'backward',
-    'turnright', 'turnleft'
-}
-
 @app.route('/')
 def index():
     return render_template('index.html', car_state=car.info)
 
-class SocketHandler(Namespace):
-    def on_connect(self):
-        logging.info('client connected')
-        self.emit('car_info', car.info)
+@socketio.on('connect')
+def on_connect():
+    emit('car_info', car.info)
 
-    def on_disconnect(self):
-        logging.info('client disconnected')
+@socketio.on('disconnect')
+def on_disconnect():
+    pass
 
-socketio.on_namespace(SocketHandler('/'))
+@socketio.on('car_action')
+def on_car_action(action):
+    car.do_action(action)
+
+car.when_changed = lambda v: eventlet.spawn_n(socketio.emit, 'car_info', v)
 
 if __name__ == '__main__':
     socketio.run(app)

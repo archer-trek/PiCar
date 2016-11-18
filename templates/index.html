@@ -14,40 +14,42 @@
   <div class="row mt-1">
     <h3>
       智能小车
-      <span class="tag tag-success" id="car_status_running" {% if not car_state['running'] %} style="display: none;" {% endif %}>Running</span>
-      <span class="tag tag-danger" id="car_status_stopped" {% if car_state['running'] %} style="display: none;" {% endif %}>Stopped</span>
+      <span class="tag tag-danger" id="car_connection_status">Offline</span>
     </h3>
   </div>
-  <div class="row mt-1" id="temperature">
-      当前温度: {{ car_state['temperature'] }}ºC
+  <div class="row mt-1">
+      小车状态: <span id="car_status">{{ car_state['status_text'] }}</span>
   </div>
-  <div class="row mt-1" id="humidity">
-      当前湿度: {{ car_state['humidity'] }}%
+  <div class="row mt-1">
+      当前温度: <span id="temperature">{{ car_state['temperature'] }}</span>ºC
+  </div>
+  <div class="row mt-1" >
+      当前湿度: <span id="humidity">{{ car_state['humidity'] }}</span>%
   </div>
   <div class="row mt-1">
     <div class="col-xs-4 offset-xs-4">
-      <button id="car_forward" type="button" onclick="carAction('forward')" class="btn btn-outline-primary btn-lg btn-block">前进</button>
+      <button id="car_forward" class="btn btn-outline-primary btn-lg btn-block">前进</button>
     </div>
   </div>
   <div class="row mt-1">
     <div class="col-xs-4">
-      <button id="car_turnleft" type="button" onclick="carAction('turnleft')" class="btn btn-outline-primary btn-lg btn-block">左转</button>
+      <button id="car_turnleft" class="btn btn-outline-primary btn-lg btn-block">左转</button>
     </div>
     <div class="col-xs-4">
 
     </div>
     <div class="col-xs-4">
-      <button id="car_turnright" type="button" onclick="carAction('turnright')" class="btn btn-outline-primary btn-lg btn-block">右转</button>
+      <button id="car_turnright" class="btn btn-outline-primary btn-lg btn-block">右转</button>
     </div>
   </div>
   <div class="row mt-1">
     <div class="col-xs-4 offset-xs-4">
-      <button id="car_backward" type="button" onclick="carAction('backward')" class="btn btn-outline-primary btn-lg btn-block">后退</button>
+      <button id="car_backward" class="btn btn-outline-primary btn-lg btn-block">后退</button>
     </div>
   </div>
   <div class="row mt-3">
     <div class="col-xs-10 offset-xs-1">
-      <button id="car_stop" type="button" onclick="carAction('stop')" class="btn btn-danger btn-lg btn-block">停止</button>
+      <button id="car_stop" class="btn btn-danger btn-lg btn-block">停止</button>
     </div>
   </div>
 </div>
@@ -60,10 +62,53 @@
   $(document).ready(function () {
     var socket = io.connect('http://' + document.domain + ':' + location.port);
     socket.on('connect', function () {
-      console.log('connect');
+      console.log('socket connected');
+      $('#car_connection_status').removeClass('tag-danger')
+          .addClass('tag-success').text('Online') ;
+    });
+    socket.on('disconnect', function () {
+      console.log('socket disconnected');
+      $('#car_connection_status').removeClass('tag-success')
+          .addClass('tag-danger').text('Offline') ;
     });
     socket.on('car_info', function (data) {
       console.log(data);
+      $('#car_status').text(data.status_text);
+      $('#temperature').text(data.temperature);
+      $('#humidity').text(data.humidity);
+    });
+
+    buttonActions = [{
+      'id': 'car_forward',
+      'mousedown': 'forward',
+      'mouseup': 'stop'
+    }, {
+      'id': 'car_backward',
+      'mousedown': 'backward',
+      'mouseup': 'stop'
+    }, {
+      'id': 'car_turnleft',
+      'mousedown': 'turnleft',
+      'mouseup': 'stop'
+    }, {
+      'id': 'car_turnright',
+      'mousedown': 'turnright',
+      'mouseup': 'stop'
+    }, {
+      'id': 'car_stop',
+      'mousedown': 'stop'
+    }];
+    buttonActions.forEach(function (action) {
+      if (action.mousedown !== undefined && action.mousedown !== '') {
+        $('#' + action.id).mousedown(function () {
+          socket.emit('car_action', action.mousedown);
+        });
+      }
+      if (action.mouseup !== undefined && action.mouseup !== '') {
+        $('#' + action.id).mouseup(function () {
+          socket.emit('car_action', action.mouseup);
+        });
+      }
     });
   });
 </script>

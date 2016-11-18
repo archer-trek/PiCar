@@ -8,7 +8,15 @@ from __future__ import (
 )
 from gpiozero import Motor
 import threading
-import logging
+from .log import get_logger
+try:
+    from queue import Queue
+    from queue import Full
+except ImportError:
+    from Queue import Queue
+    from Queue import Full
+
+logger = get_logger('car')
 
 class MotorGroup(object):
 
@@ -48,7 +56,7 @@ class FourWDCar(object):
     Status: stopped, forward, backward, turnleft, turnright
     '''
 
-    STATUS = {
+    _STATUS = {
         'stopped': u'停止',
         'forward': u'前进',
         'backward': u'后退',
@@ -56,10 +64,28 @@ class FourWDCar(object):
         'turnright': u'右转',
     }
 
+    _AVALIBE_ACTIONS = {
+        'stop',
+        'forward', 'backward',
+        'turnright', 'turnleft'
+    }
+
     def __init__(self):
         self._status = 'stopped'
-        self._dht = None
         self._lock = threading.RLock()
+
+        self.when_changed = None
+        self._queue = Queue(maxsize=1)
+        self._consumer = threading.Thread(target=self._consume)
+        self._consumer.daemon = True
+        self._consumer.start()
+
+    def _consume(self):
+        while True:
+            self._queue.get()
+            if self.when_changed is not None:
+                self.when_changed(self.info)
+            self._queue.task_done()
 
     @property
     def status(self):
@@ -69,29 +95,32 @@ class FourWDCar(object):
     @property
     def status_text(self):
         with self._lock:
-            return self.STATUS[self._status]
+            return self._STATUS[self._status]
 
     @status.setter
     def status(self, value):
-        if value not in self.STATUS:
+        if value not in self._STATUS:
             raise Exception(value + ' not valid car status')
         with self._lock:
             if self._status != value:
-                logging.info('car status change to %s from %s' % (self._status, value))
+                logger.info('car status change to %s from %s' % (self._status, value))
                 self._status = value
-                # todo status changed
+                self._nofity_change()
+
+    def _nofity_change(self):
+        try:
+            self._queue.put_nowait(True)
+        except Full:
+            pass
 
     @property
     def info(self):
-        v = {
+        return {
             'status': self.status,
+            'status_text': self.status_text,
             'humidity': '0.0',
             'temperature': '0.0',
         }
-        if self._dht is not None:
-            for key, value in self._dht.value.items():
-                v[key] = '%.1f' % value
-        return v
 
     def forward(self):
         self.status = 'forward'
@@ -108,13 +137,36 @@ class FourWDCar(object):
     def turnleft(self):
         self.status = 'turnleft'
 
+    def do_action(self, action):
+        if action in self._AVALIBE_ACTIONS:
+            getattr(self, action)()
+
 class PiCar(FourWDCar):
 
-    def __init__(self, left_motor_pins, right_motor_pins, dht_sensor=None):
+    def __init__(self, left_motor_pins, right_motor_pins, dht_sensor_pin=None):
         super(PiCar, self).__init__()
         self._left_motors = MotorGroup(*left_motor_pins)
         self._right_motors = MotorGroup(*right_motor_pins)
-        self._dht = dht_sensor
+
+        self._humidity = 0.0
+        self._temperature = 0.0
+
+        if dht_sensor_pin is not None:
+            from .sensor import DHT
+            self._dht = DHT(dht_sensor_pin)
+
+            def changed(h, t):
+                self._humidity = h
+                self._temperature = t
+                self._nofity_change()
+            self._dht.when_changed = changed
+
+    @property
+    def info(self):
+        v = super(PiCar, self).info
+        v['humidity'] = '%.1f' % self._humidity
+        v['temperature'] = '%.1f' % self._temperature
+        return v
 
     def forward(self):
         super(PiCar, self).forward()
@@ -145,5 +197,21 @@ class MockFourWDCar(FourWDCar):
 
     def __init__(self):
         super(MockFourWDCar, self).__init__()
+        self._humidity = 0.0
+        self._temperature = 0.0
+
         from .sensor import DHT
         self._dht = DHT(None, mock=True)
+
+        def changed(h, t):
+            self._humidity = h
+            self._temperature = t
+            self._nofity_change()
+        self._dht.when_changed = changed
+
+    @property
+    def info(self):
+        v = super(MockFourWDCar, self).info
+        v['humidity'] = '%.1f' % self._humidity
+        v['temperature'] = '%.1f' % self._temperature
+        return v

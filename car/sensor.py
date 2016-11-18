@@ -6,8 +6,10 @@ __date__ = '2016-11-16 22:25'
 import time
 import threading
 import random
+from .log import get_logger
 
 random.seed()
+logger = get_logger('sensor')
 
 class DHT(object):
 
@@ -18,16 +20,27 @@ class DHT(object):
         :param interval: 读取间隔，默认60秒
         :param mock: 是否模拟
         '''
-
         self._humidity = 0.0
         self._temperature = 0.0
 
         self._pin = pin
         self._mock = mock
         self._interval = interval
+        self._when_changed = None
+
         self._job = threading.Thread(target=self._run)
         self._job.daemon = True
         self._job.start()
+
+    @property
+    def when_changed(self):
+        return self._when_changed
+
+    @when_changed.setter
+    def when_changed(self, callback):
+        if callback is not None:
+            self._when_changed = callback
+            callback(self._humidity, self._temperature)
 
     @property
     def humidity(self):
@@ -66,6 +79,10 @@ class DHT(object):
                 h = self._random_change(self._humidity)
                 t = self._random_change(self._temperature)
 
+            if (self._humidity != h or self._temperature != t) and self.when_changed is not None:
+                self.when_changed(h, t)
+
+            logger.info('humidity %.1f%%, temperature %.1f' % (h, t))
             self._humidity = h
             self._temperature = t
 

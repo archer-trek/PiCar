@@ -143,7 +143,7 @@ class FourWDCar(object):
 
 class PiCar(FourWDCar):
 
-    def __init__(self, left_motor_pins, right_motor_pins, dht_sensor_pin=None):
+    def __init__(self, left_motor_pins, right_motor_pins, dht_sensor_pin=None, **kwargs):
         super(PiCar, self).__init__()
         self._left_motors = MotorGroup(*left_motor_pins)
         self._right_motors = MotorGroup(*right_motor_pins)

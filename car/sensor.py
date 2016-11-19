@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # coding: utf-8
-__author__ = 'wzy'
-__date__ = '2016-11-16 22:25'
-
 import time
 import threading
 import random

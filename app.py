@@ -1,22 +1,26 @@
 #!/usr/bin/env python
 # coding: utf-8
-__author__ = 'wzy'
-__date__ = '2016-11-12 16:33'
-
+import json
+import codecs
 import eventlet
 eventlet.monkey_patch()
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
-from car import MockFourWDCar
-
-# import logging
-# logging.basicConfig(level=logging.INFO)
+from car import MockFourWDCar, PiCar
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-car = MockFourWDCar()
+def load_car_config():
+    with codecs.open('config.json', encoding='utf8') as fp:
+        return json.load(fp)['car']
+
+car_config = load_car_config()
+if car_config['mock'] is True:
+    car = MockFourWDCar()
+else:
+    car = PiCar(**car_config)
 
 @app.route('/')
 def index():

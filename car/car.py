@@ -67,11 +67,12 @@ class FourWDCar(object):
     _AVALIBE_ACTIONS = {
         'stop',
         'forward', 'backward',
-        'turnright', 'turnleft'
+        'turnright', 'turnleft', 'turnstop'
     }
 
     def __init__(self):
         self._status = 'stopped'
+        self._stashed_status = None
         self._lock = threading.RLock()
 
         self.when_changed = None
@@ -86,6 +87,17 @@ class FourWDCar(object):
             if self.when_changed is not None:
                 self.when_changed(self.info)
             self._queue.task_done()
+
+    def _push_status(self, status):
+        self._stashed_status = status
+
+    def _pop_status(self):
+        status = self._stashed_status
+        self._stashed_status = None
+        return status
+
+    def _peek_status(self):
+        return self._stashed_status
 
     @property
     def status(self):
@@ -103,7 +115,7 @@ class FourWDCar(object):
             raise Exception(value + ' not valid car status')
         with self._lock:
             if self._status != value:
-                logger.info('car status change to %s from %s' % (self._status, value))
+                logger.info('car status changed, %10s --> %-10s' % (self._status, value))
                 self._status = value
                 self._nofity_change()
 
@@ -124,18 +136,32 @@ class FourWDCar(object):
 
     def forward(self):
         self.status = 'forward'
+        self._push_status('forward')
 
     def backward(self):
         self.status = 'backward'
+        self._push_status('backward')
 
     def stop(self):
         self.status = 'stopped'
+        self._push_status('stopped')
 
     def turnright(self):
+        self._push_status(self.status)
         self.status = 'turnright'
 
     def turnleft(self):
+        self._push_status(self.status)
         self.status = 'turnleft'
+
+    def turnstop(self):
+        status = self._pop_status()
+        if status == 'forward':
+            self.forward()
+        elif status == 'backward':
+            self.backward()
+        elif status == 'stopped':
+            self.stop()
 
     def do_action(self, action):
         if action in self._AVALIBE_ACTIONS:
@@ -171,12 +197,12 @@ class PiCar(FourWDCar):
     def forward(self):
         super(PiCar, self).forward()
         self._left_motors.forward()
-        self._right_motors.backward()
+        self._right_motors.forward()
 
     def backward(self):
         super(PiCar, self).backward()
         self._left_motors.backward()
-        self._right_motors.forward()
+        self._right_motors.backward()
 
     def stop(self):
         super(PiCar, self).stop()
@@ -185,13 +211,21 @@ class PiCar(FourWDCar):
 
     def turnright(self):
         super(PiCar, self).turnright()
-        self._left_motors.forward()
-        self._right_motors.forward()
+        if self._peek_status() == 'backward':
+            self._left_motors.backward()
+            self._right_motors.forward()
+        else:
+            self._left_motors.forward()
+            self._right_motors.backward()
 
     def turnleft(self):
         super(PiCar, self).turnleft()
-        self._left_motors.backward()
-        self._right_motors.backward()
+        if self._peek_status() == 'backward':
+            self._left_motors.forward()
+            self._right_motors.backward()
+        else:
+            self._left_motors.backward()
+            self._right_motors.forward()
 
 class MockFourWDCar(FourWDCar):
 
